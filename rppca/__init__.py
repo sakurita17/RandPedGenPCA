@@ -3,6 +3,54 @@ import scipy
 import scipy.sparse as sparse
 import numba
 
+@numba.njit("void(i4[:], i4[:], f8[:], f8[:])")
+def back_1dsolve_c(Lp, Li, Lx, Y):
+    """
+    `L` is lower-triangular Cholesky factor in CSC format: solve `L X = Y`.
+    `Y` is updated in-place.
+    """
+    n = len(Y)
+    for j in range(n):
+        Y[j] /= Lx[Lp[j]]
+        for p in range(Lp[j] + 1, Lp[j + 1]):
+            Y[Li[p]] -= Lx[p] * Y[j]
+
+@numba.njit("void(i4[:], i4[:], f8[:], f8[:])")
+def forward_1dsolve_c(Lp, Li, Lx, Y):
+    """
+    `L` is lower-triangular Cholesky factor in CSC format: solve `L' X = Y`.
+    `Y` is updated in-place.
+    """
+    n = len(Y)
+    for j in range(n - 1, -1, -1):
+        for p in range(Lp[j] + 1, Lp[j + 1]):
+            Y[j] -= Lx[p] * Y[Li[p]]
+        Y[j] /= Lx[Lp[j]]
+
+@numba.njit("void(i4[:], i4[:], f8[:], f8[:])")
+def back_1dsolve_f(Lp, Li, Lx, Y):
+    """
+    `L` is lower-triangular Cholesky factor in CSC format: solve `L X = Y`.
+    `Y` is updated in-place.
+    """
+    n = len(Y)
+    for j in range(n):
+        Y[j] /= Lx[Lp[j]]
+        for p in range(Lp[j] + 1, Lp[j + 1]):
+            Y[Li[p]] -= Lx[p] * Y[j]
+
+@numba.njit("void(i4[:], i4[:], f8[:], f8[:])")
+def forward_1dsolve_f(Lp, Li, Lx, Y):
+    """
+    `L` is lower-triangular Cholesky factor in CSC format: solve `L' X = Y`.
+    `Y` is updated in-place.
+    """
+    n = len(Y)
+    for j in range(n - 1, -1, -1):
+        for p in range(Lp[j] + 1, Lp[j + 1]):
+            Y[j] -= Lx[p] * Y[Li[p]]
+        Y[j] /= Lx[Lp[j]]
+
 @numba.njit("void(i4[:], i4[:], f8[:], f8[:,:])")
 def back_2dsolve_c(Lp, Li, Lx, Y):
     """
@@ -81,7 +129,7 @@ class Design:
         """
         Solve `L x = y`
         """
-    
+        
         if left.flags['C_CONTIGUOUS']:
             back_2dsolve_c(self.Lp, self.Li, self.Lx, left)
         elif left.flags['F_CONTIGUOUS']:
@@ -99,6 +147,50 @@ class Design:
             forward_2dsolve_c(self.Lp, self.Li, self.Lx, out)
         elif out.flags['F_CONTIGHOUS']:
             forward_2dsolve_f(self.Lp, self.Li, self.Lx, out)
+        else:
+            raise ValueError('out is not contiguous')
+        return out
+
+class Design1d:
+    def __init__(self, L):
+        """
+        Lower Cholesky factor of the inverse of the pedigree adjacency matrix.
+        Supports forward and backward substitution of the Cholesky factor.
+
+        Parameters
+        ------
+        L : scipy.sparse.csc_matrix
+            a compressed sparse column (CSC) format lower triangular matrix
+        
+        """
+        self.Lp = L.indptr
+        self.Li = L.indices
+        self.Lx = L.data
+
+        self.num_inds = L.shape[0]
+    
+    def dot_left(self, left):
+        """
+        Solve `L x = y`
+        """
+        out = left.copy()
+        if out.flags['C_CONTIGUOUS']:
+            back_1dsolve_c(self.Lp, self.Li, self.Lx, out)
+        elif out.flags['F_CONTIGUOUS']:
+            back_1dsolve_f(self.Lp, self.Li, self.Lx, out)
+        else:
+            raise ValueError('left is not contiguous')        
+        return out
+
+    def dot_right(self, right):
+        """
+        Solve `L' x = y`
+        """
+        out = right.copy()
+        if out.flags['C_CONTIGUOUS']:
+            forward_1dsolve_c(self.Lp, self.Li, self.Lx, out)
+        elif out.flags['F_CONTIGHOUS']:
+            forward_1dsolve_f(self.Lp, self.Li, self.Lx, out)
         else:
             raise ValueError('out is not contiguous')
         return out
