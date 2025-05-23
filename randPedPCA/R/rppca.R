@@ -26,10 +26,11 @@ randRangeFinder <- function(L, rank, depth, numVectors, cent=FALSE){
   for (i in 1:depth){
     qrObject <- base::qr(Q)
     Q <- qr.Q(qrObject)
-    if(cent) Q <- apply(Q, 2, function(col) col - mean(col))
-    Q <- spam::backsolve(t(L),Q)
-    Q <- spam::forwardsolve(L,Q)
-    if(cent)  Q <- apply(Q, 2, function(col) col - mean(col))
+    #if(cent) Q <- apply(Q, 2, function(col) col - mean(col))
+    #Q <- spam::backsolve(t(L),Q)
+    #Q <- spam::forwardsolve(L,Q)
+    Q <- oraculumLi(L,Q, center=cent)
+    #if(cent)  Q <- apply(Q, 2, function(col) col - mean(col))
   }
   qrObject <- qr(Q)
   Q <- qr.Q(qrObject)
