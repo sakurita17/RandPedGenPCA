@@ -26,11 +26,7 @@ randRangeFinder <- function(L, rank, depth, numVectors, cent=FALSE){
   for (i in 1:depth){
     qrObject <- base::qr(Q)
     Q <- qr.Q(qrObject)
-    #if(cent) Q <- apply(Q, 2, function(col) col - mean(col))
-    #Q <- spam::backsolve(t(L),Q)
-    #Q <- spam::forwardsolve(L,Q)
     Q <- oraculumLi(L,Q, center=cent)
-    #if(cent)  Q <- apply(Q, 2, function(col) col - mean(col))
   }
   qrObject <- qr(Q)
   Q <- qr.Q(qrObject)
@@ -126,22 +122,32 @@ rppca <- function(X, ...) UseMethod("rppca")
 #' @method rppca spam
 #' @export
 rppca.spam <- function(X,
-                  method="randSVD",
-                  rank=10,
-                  depth=3,
-                  numVectors=15,
-                  totVar=NULL,
-                  center=FALSE,
-                  ...){
+                       method="randSVD",
+                       rank=10,
+                       depth=3,
+                       numVectors=15,
+                       totVar=NULL,
+                       center=FALSE,
+                       ...){
   #check L is the right kind of sparse matrix
   returnRotation=TRUE
   nn <- dim(X)[1]
-  if(method=="randSVD"){
-    rsvd = randSVD(X, rank=rank, depth=depth, numVectors=numVectors, cent=center)
-    scores = rsvd$u %*% diag(rsvd$d^2)
-    dimnames(scores) <- list(NULL, paste0("PC", 1:rank))
+  if(method %in% c("randSVD", "rspec")){
+    if(method=="randSVD"){
+      # run randomised SVD as defined above
+      rsvd = randSVD(X, rank=rank, depth=depth, numVectors=numVectors, cent=center)
 
-    stdv <- rsvd$d
+      # extract/generate components of the return value
+      scores = rsvd$u %*% diag(rsvd$d^2)
+
+
+      stdv <- rsvd$d
+    } else { # rspec
+      eigdcp = eigs(oracFun, k=rank, n=nn, args=list(A=X, cent=center))
+      scores = oraculumLi(X, eigdcp$vectors)
+      stdv <- sqrt(as.numeric(eigdcp$values))
+    }
+    dimnames(scores) <- list(NULL, paste0("PC", 1:rank))
     names(stdv) <- paste0("PC", 1:length(stdv))
 
     pc <- list(x= scores,
@@ -151,14 +157,15 @@ rppca.spam <- function(X,
     )
 
     if(!missing(totVar)) {
-
+      # check whether totVar as "center" attribute set
       if(!is.null(attr(totVar, "center"))){
+        #is so, make sure its identical to the "center" argument supplied to rppca
         if(center != attr(totVar, "center")) {
           warning("rppca is run with center=", center, ", but the value of totVar
                   supplied has center=", attr(totVar, "center"))
         }
       }
-
+      # compute variance proportions
       vp <- stdv^2/totVar
       names(vp) <- paste0("PC", 1:length(vp))
       pc$varProps <- vp
@@ -179,51 +186,64 @@ rppca.spam <- function(X,
 #' @method rppca pedigree
 #' @export
 #' @importFrom pedigreeTools inbreeding getLInv
+#' @importFrom RSpectra eigs
 rppca.pedigree <- function(X,
-                          method="randSVD",
-                          rank=10,
-                          depth=3,
-                          numVectors=15,
-                          totVar=NULL,
-                          center=FALSE,
-                          ...){
+                           method="randSVD",
+                           rank=10,
+                           depth=3,
+                           numVectors=15,
+                           totVar=NULL,
+                           center=FALSE,
+                           ...){
   #TODO: add check that L is the right kind of sparse matrix
   returnRotation=TRUE
 
   # get Linv
   LIsp <- getLInv(X)
   LI <- sparse2spam(LIsp)
-  # get number of inds
+
+  # get number of individuals
   nn <- dim(LI)[1]
 
   # totVar of non-centred A
   tvnc <- sum(inbreeding(X) + 1)
 
-  # total var is sum of (inbreeding coefs + 1)
+  # total var is sum of (inbreeding coefs + 1) if not centred
   if(center==FALSE) {
     if(!missing(totVar)){
-      warning("Using specified value of ", totVar, " for the total variance
+      warning("Using user-specified value of ", totVar, " for the total variance
       instead of the value computed from the pedigree, which was ",
               tvnc)
-      } else { # if totVar was not specified
-    totVar <- tvnc
+    } else { # if totVar was not specified
+      totVar <- tvnc
+    }
   }
-  }
 
 
 
 
-  if(method=="randSVD"){
-    rsvd = randSVD(LI, rank=rank, depth=depth, numVectors=numVectors, cent=center)
-    scores = rsvd$u %*% diag(rsvd$d^2)
+  if(method %in% c("randSVD", "rspec")){
+
+    if(method == "randSVD"){
+      rsvd = randSVD(LI, rank=rank, depth=depth, numVectors=numVectors, cent=center)
+      scores = rsvd$u %*% diag(rsvd$d^2)
+      stdv <- rsvd$d
+
+    } else { # rspec
+      eigdcp = eigs(oracFun, k=rank, n=nn, args=list(A=LI, cent=center))
+      scores = oraculumLi(LI, eigdcp$vectors)
+      stdv <- sqrt(as.numeric(eigdcp$values))
+
+    }
     dimnames(scores) <- list(NULL, paste0("PC", 1:rank))
-    stdv <- rsvd$d
     names(stdv) <- paste0("PC", 1:length(stdv))
 
-    if(is.null(totVar)){ # if there is no value of totVar (can only happen with center==TRUE) then estimate totVar
-      n <- dim(LI)[1]
-      onesVec <- rep(1, n)
-      totVar <- tvnc - as.vector(1/n * t(onesVec) %*% oraculumLi(LI, t(t(onesVec))))
+    # the following is computed for both modes, randSVD and rspec
+
+    if(is.null(totVar)){ # if there is no value of totVar (can only happen with center==TRUE), then estimate totVar
+      #n <- dim(LI)[1]
+      onesVec <- rep(1, nn)
+      totVar <- tvnc - as.vector(1/nn * t(onesVec) %*% oraculumLi(LI, t(t(onesVec))))
       attr(totVar, "center") <- TRUE
     }
 
@@ -233,7 +253,7 @@ rppca.pedigree <- function(X,
         warning("rppca is run with center=", center, ", but the value of totVar
                   supplied has center=", attr(totVar, "center"))
       }
-}
+    }
 
     vp <- stdv^2/totVar
     names(vp) <- paste0("PC", 1:length(vp))
@@ -252,7 +272,10 @@ rppca.pedigree <- function(X,
     class(pc) <- "rppca"
     return(pc)
 
-  } else {
+
+
+
+  } else { # if method is no in c("randSVD", "rspec")
     stop(paste0("Method ", method," not implemented"))
   }
 }
@@ -272,7 +295,7 @@ variance of the data.")
                         "Proportion of Variance" = object$varProps,
                         "Cumulative proportion" = round(cumsum(object$varProps),
                                                         5)
-                        )
+    )
   }
 
   colnames(importance) <- colnames(object$x)
