@@ -6,10 +6,10 @@
 \title{Example pedigree L inverse matrix}
 \format{
 ## `pedLInv`
-Matrix object of class 'spam' of dimension 2650x2650,
-    with 7750 (row-wise) nonzero elements.
-    Density of the matrix is 0.11%.
-    Class 'spam' (32-bit)
+Matrix object of class 'spam' of dimension 2100x2100,
+    with 6100 (row-wise) nonzero elements.
+    Density of the matrix is 0.138%.
+Class 'spam' (32-bit)
 }
 \source{
 Simulation

@@ -12,7 +12,7 @@ makeRandMat  = function(m, n) 2*matrix(sample(1:2, size = m*n, replace = TRUE, p
 #' @param num_queries Number of random vectors to draw
 #' @param sketch_frac Hutch++ detail
 #' @param center Whether or not to implicitly centre
-#' @param oraculum The oracle function to use
+#' @param oraculum The oracle function to be used
 #'
 #' @details
 #' The Hutch++ algorithm (Meyer et al. 2021, https://doi.org/10.48550/arXiv.2010.09649)

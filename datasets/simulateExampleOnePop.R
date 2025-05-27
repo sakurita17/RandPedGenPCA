@@ -18,8 +18,8 @@
 
 # ---- INSTALLATION ------------------------------------------------------
 
-# pkgs <- c("AlphaSimR", "dplyr", "pedigreeTools", "SIMplyBee")
-# install.packages(pkg = pkgs)
+pkgs <- c("AlphaSimR", "dplyr", "pedigreeTools", "SIMplyBee")
+install.packages(pkg = pkgs)
 
 # ---- SETUP -------------------------------------------------------------
 
@@ -31,7 +31,7 @@ library(package = "pedigreeTools")
 set.seed(987765543)
 # Simulate founder genomes - one common founder population
 founderGenomes <- runMacs(nInd = 100, nChr = 10, segSites = 1100,
-                          species = "GENERIC")
+                                                       species = "GENERIC")
 # ... uncomment the line below and run the code to use the two-founder population
 # founderGenomes <- founderGenomes2
 
@@ -43,7 +43,7 @@ SP$setTrackPed(isTrackPed = TRUE)
 SP$setTrackRec(isTrackRec = TRUE)
 # ... add two complex traits
 varG <- matrix(data = c( 1.0, -0.3,
-                         -0.3,  1.0), byrow = TRUE, nrow = 2)
+                        -0.3,  1.0), byrow = TRUE, nrow = 2)
 SP$addTraitA(nQtlPerChr = 100, mean = c(0, 0), var = diag(varG), corA = varG)
 varE <- matrix(data = c(2.0, 0.0,
                         0.0, 2.0), byrow = TRUE, nrow = 2)
@@ -112,5 +112,5 @@ pedLInv <- randPedPCA::sparse2spam(getLInv(ped = ped))
 # ---- SAVE DATA ---------------------------------------------------------
 pedMeta <- data$pedigree
 pedGeno <- data$genoIBS
-usethis::use_data(pedLInv, overwrite = TRUE)
-usethis::use_data(pedMeta, overwrite = TRUE)
+#usethis::use_data(pedLInv, overwrite = TRUE)
+#usethis::use_data(pedMeta, overwrite = TRUE)
