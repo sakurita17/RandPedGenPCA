@@ -65,7 +65,6 @@ randSVD <- function(L, rank, depth, numVectors, cent=FALSE){
   return(list(u=U[,1:rank], d=D[1:rank], v=V[1:rank,]))
 }
 
-
 #' Fast pedigree PCA using sparse matrices and randomised linear algebra
 #'
 #' @param X A representation of a pedigree, see Details.
@@ -125,12 +124,13 @@ rppca.spam <- function(X,
                        method="randSVD",
                        rank=10,
                        depth=3,
-                       numVectors=15,
+                       numVectors,
                        totVar=NULL,
                        center=FALSE,
                        ...){
   #check L is the right kind of sparse matrix
   returnRotation=TRUE
+  if(missing(numVectors)) numVectors <- ceiling(rank * 1.5)
   nn <- dim(X)[1]
   if(method %in% c("randSVD", "rspec")){
     if(method=="randSVD"){
@@ -142,7 +142,7 @@ rppca.spam <- function(X,
 
 
       stdv <- rsvd$d
-    } else { # rspec
+    } else if(method=="rspec") {
       eigdcp = eigs(oracFun, k=rank, n=nn, args=list(A=X, cent=center))
       scores = oraculumLi(X, eigdcp$vectors)
       stdv <- sqrt(as.numeric(eigdcp$values))
@@ -191,12 +191,13 @@ rppca.pedigree <- function(X,
                            method="randSVD",
                            rank=10,
                            depth=3,
-                           numVectors=15,
+                           numVectors,
                            totVar=NULL,
                            center=FALSE,
                            ...){
   #TODO: add check that L is the right kind of sparse matrix
   returnRotation=TRUE
+  if(missing(numVectors)) numVectors <- ceiling(rank * 1.5)
 
   # get Linv
   LIsp <- getLInv(X)

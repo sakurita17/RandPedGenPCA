@@ -43,7 +43,7 @@ ped <- pedigree(pedMeta$fid,
                 pedMeta$mid,
                 pedMeta$id)
 pc01 <- rppca(ped, center=T)
-plot(pc01, col = pedMeta$population)
+plot(pc01, col = factor(pedMeta$population))
 ```
 
 
@@ -55,14 +55,14 @@ in `spam` format. This is why we wrap `sparse2spam` around `getLInv`:
 ```{r}
 li <- sparse2spam(getLInv(ped))
 pc02 <- rppca(li, center = T)
-plot(pc02, col = pedMeta$population)
+plot(pc02, col = factor(pedMeta$population))
 ```
 
 For simplicity, we decided to ship this $L^{-1}$ matrix as an example dataset.
 The PCA result is identical when using this object `pedLInv`:
 ```{r}
 pc03 <- rppca(pedLInv, center = T)
-plot(pc03, col = pedMeta$population)
+plot(pc03, col = factor(pedMeta$population))
 ```
 
 ## Centring
@@ -75,8 +75,8 @@ and it usually aligns with time or generation number.
 set.seed(123345) # set random seed as Hutch++ uses random numbers
 ttv <- hutchpp(pedLInv,num_queries = 100, center = T) # estimate
 opar <- par(mfrow=c(1,2))
-plot(rppca(ped), main="Un-centred", col=pedMeta$population)
-plot(rppca(ped, center=T, totVar = ttv), main="Centred", col=pedMeta$population)
+plot(rppca(ped), main="Un-centred", col=factor(pedMeta$population))
+plot(rppca(ped, center=T, totVar = ttv), main="Centred", col=factor(pedMeta$population))
 par(opar)
 ```
 
@@ -217,9 +217,9 @@ total variance was estimated as in this example, where it was supplied when
 calling `rppca`, then the proportions displayed come with some uncertainty.
 ```{r}
 # PC1 and PC2 are plotted by default
-plot(pc06, col=pedMeta$population, main="My pedigree PCA")
+plot(pc06, col=factor(pedMeta$population), main="My pedigree PCA")
 # plot PC1 and PC3 instead
-plot(pc06, dims=c(1,3), col=pedMeta$population, main="My pedigree PCA,\ncustom PCs shown")
+plot(pc06, dims=c(1,3), col=factor(pedMeta$population), main="My pedigree PCA,\ncustom PCs shown")
 ```
 
 ## Down-sampling
