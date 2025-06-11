@@ -68,14 +68,14 @@ randSVD <- function(L, rank, depth, numVectors, cent=FALSE){
 #' Fast pedigree PCA using sparse matrices and randomised linear algebra
 #'
 #' @param X A representation of a pedigree, see Details.
-#' @param method \code{string} only randSVD (the default) is implemented
-#' @param rank  \code{integer} how many principal components to return
-#' @param depth \code{integer} number of iterations for generating the range matrix
-#' @param numVectors \code{integer > rank} to specify the oversampling for the
-#' range matrix
-#' @param totVar \code{scalar} (optional) the total variance, required for
+#' @param method \code{string}, \code{"randSVD"} (the default) or \code{"rspec"} can be chosen, see Details
+#' @param rank  \code{integer}, the number of principal components to return
+#' @param depth \code{integer}, number of iterations for generating the range matrix
+#' @param numVectors \code{integer > rank}, the number of random vectors to be
+#' sampled when generating the range matrix, defaults to \code{ceiling(rank*1.5)}.
+#' @param totVar \code{scalar}, (optional) the total variance, required for
 #' computation of variance proportions when using an L-inverse matrix a input
-#' @param center \code{logical} whether or not to (implicitly) centre the additive
+#' @param center \code{logical}, whether or not to (implicitly) centre the additive
 #' relationship matrix
 #' @param ... optional arguments passed to methods
 #'
@@ -83,6 +83,10 @@ randSVD <- function(L, rank, depth, numVectors, cent=FALSE){
 #' The output slots are named like those of R's built in \code{prcomp} function.
 #' Rotation is not returned by default as it is the transpose of the PC scores,
 #' which are returned in \code{x}. \code{scale} and \code{center} are set to \code{FALSE}.
+#'
+#' Which \code{method} performs better depends on the number of PC requested, whether
+#' centring is applied, and on the structure of the pedigree. As a rule of thumb,
+#' \code{"rspec"} is faster than the default when \code{rank} is 8 or greater.
 #'
 #' @returns
 #' A \code{list} containing:

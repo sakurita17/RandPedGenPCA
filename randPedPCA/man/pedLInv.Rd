@@ -3,7 +3,7 @@
 \docType{data}
 \name{pedLInv}
 \alias{pedLInv}
-\title{Example pedigree L inverse matrix}
+\title{L inverse matrix of the one-population example pedigree}
 \format{
 ## `pedLInv`
 Matrix object of class 'spam' of dimension 2100x2100,
@@ -19,7 +19,5 @@ pedLInv
 }
 \description{
 An L inverse matrix generated from an AlphaSimR simulation of 20 generations.
-An original population splits into sub-populations A and B. After a number of
-generations, crossbreeding starts.
 }
 \keyword{datasets}

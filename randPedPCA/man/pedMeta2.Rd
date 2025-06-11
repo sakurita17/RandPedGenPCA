@@ -3,7 +3,7 @@
 \docType{data}
 \name{pedMeta2}
 \alias{pedMeta2}
-\title{Metadata associated with the 2nd example pedigree}
+\title{Metadata associated with the two-population example pedigree}
 \format{
 ## `pedMeta2`
 A 'data.frame' of 2650 individuals (rows) with 12 variables (cols):
