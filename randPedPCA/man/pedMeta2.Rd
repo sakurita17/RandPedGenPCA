@@ -3,18 +3,7 @@
 \docType{data}
 \name{pedMeta2}
 \alias{pedMeta2}
-\title{#' Example genotype data
-#'
-#' An genotype matrix (0/1/2) generated from an AlphaSimR simulation of 20 generations.
-#' An original population splits into sub-populations A and B. After a number of
-#' generations, crossbreeding starts.
-#'
-#'
-#' @format ## `pedGeno`
-#' Matrix of 2650 rows (inidividuals) and 11000 columns (SNPs)
-#' @source Simulation
-"pedGeno"
-Metadata associated with the 2nd example pedigree}
+\title{Metadata associated with the two-population example pedigree}
 \format{
 ## `pedMeta2`
 A 'data.frame' of 2650 individuals (rows) with 12 variables (cols):

@@ -21,7 +21,7 @@ hutchpp(
 
 \item{center}{Whether or not to implicitly centre}
 
-\item{oraculum}{The oracle function to use}
+\item{oraculum}{The oracle function to be used}
 }
 \value{
 An estimate of A's trace - numeric

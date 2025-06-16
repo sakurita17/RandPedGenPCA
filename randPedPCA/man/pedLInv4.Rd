@@ -3,7 +3,7 @@
 \docType{data}
 \name{pedLInv4}
 \alias{pedLInv4}
-\title{Example pedigree L inverse matrix}
+\title{L inverse matrix of the four-population example pedigree}
 \format{
 ## `pedLInv4`
 Matrix object of class 'spam' of dimension 4200x4200,

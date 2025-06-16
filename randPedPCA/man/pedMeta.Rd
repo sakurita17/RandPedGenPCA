@@ -3,10 +3,10 @@
 \docType{data}
 \name{pedMeta}
 \alias{pedMeta}
-\title{Metadata associated with the example pedigree}
+\title{Metadata associated with one-population example}
 \format{
 ## `pedMeta`
-A 'data.frame' of 2650 individuals (rows) with 12 variables (cols):
+A 'data.frame' of 2100 individuals (rows) with 9 variables (cols):
 \describe{
   \item{id}{Integer individual ID}
   \item{population}{Population code. A, B or AB}
@@ -17,9 +17,6 @@ A 'data.frame' of 2650 individuals (rows) with 12 variables (cols):
   \item{pv1}{phenotypic value}
   \item{gv2}{genetic value}
   \item{pv2}{phenotypic value}
-  \item{gv}{genetic value}
-  \item{pv}{phenotypic value}
-  \item{generationPlotShift}{for plotting}
 }
 }
 \source{

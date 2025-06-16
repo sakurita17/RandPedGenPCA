@@ -12,7 +12,7 @@ makeRandMat  = function(m, n) 2*matrix(sample(1:2, size = m*n, replace = TRUE, p
 #' @param num_queries Number of random vectors to draw
 #' @param sketch_frac Hutch++ detail
 #' @param center Whether or not to implicitly centre
-#' @param oraculum The oracle function to use
+#' @param oraculum The oracle function to be used
 #'
 #' @details
 #' The Hutch++ algorithm (Meyer et al. 2021, https://doi.org/10.48550/arXiv.2010.09649)
@@ -49,18 +49,12 @@ hutchpp <- function(B,
 
   Hutch_num_queries <- num_queries - S_num_queries
   S <- makeRandMat(dimension, S_num_queries)
-  Q <- qr.Q(Matrix::qr(oraculum(B, S), 0))
-  if(center) Q <- apply(Q, 2, function(x) x - mean(x))
+  Q <- qr.Q(Matrix::qr(oraculum(B, S, center), 0))
   G <- makeRandMat(dimension, Hutch_num_queries)
   G <- G - Q %*% (t(Q) %*% G)
-  if(center){
 
-    oQc <- apply(oraculum(B, Q), 2, function(x) x-mean(x))
-    oGc <- apply(oraculum(B, G), 2, function(x) x-mean(x))
-    trace_est <- sum(diag(t(Q) %*% oQc)) + sum(diag(t(G) %*% oGc)) / Hutch_num_queries
-  } else {
-    trace_est <- sum(diag(t(Q) %*% oraculum(B, Q))) + sum(diag(t(G) %*% oraculum(B, G))) / Hutch_num_queries
-  }
+  trace_est <- sum(diag(t(Q) %*% oraculum(B, Q, center))) + sum(diag(t(G) %*% oraculum(B, G, center))) / Hutch_num_queries
+
 
   attr(trace_est, "center") <- center
   return(trace_est)
