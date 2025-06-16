@@ -8,7 +8,7 @@ Authors@R: c(
     person("Ros", "Craddock", email="", role= "aut"),
     person("Gregor", "Gorjanc", email="", role= "aut"))
 Description: Carry out principal component analysis (PCA) of very large pedigrees such as found
-    in breeding populations! This package, 'randPedPCA', exploits sparse matrices and randomised
+    in breeding populations! This package exploits sparse matrices and randomised
     linear algebra to deliver a gazillion-times speed-up compared to naive singular value decoposition (SVD)
     (and eigen decomposition).
 License: MIT + file LICENSE
