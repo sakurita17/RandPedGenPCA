@@ -37,3 +37,11 @@ vignette("pedigree-pca")
 # Python prototype
 
 The initial prototype was developed in Python. An example can be found in `notebook/Example.ipynb`, which uses the `rppca` module in this repository.
+
+# Repo structure
+```
+datasets   ... datasets for testing and code for generating data (irrelavant to users)
+notebooks  ... demonstration of the Python prototype
+randPedPCA ... the R PACKAGE
+rppca      ... Python prototype
+```
