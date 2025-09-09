@@ -1,3 +1,5 @@
+
+
 # Randomized Pedigree Principal Component Analysis
 
 A pedigree can be represented as a genetic relationship matrix (GRM). Therefore,
@@ -17,13 +19,17 @@ via the randomized singular value decomposition (rSVD) described in [Halko et
 al. (2011)](http://dx.doi.org/10.1137/090771806). The resulting principal
 components can reveal the underlying population structure of a pedigree.
 
-# Preprint
-Check out our preprint on bioRxiv [here](https://doi.org/10.1101/2025.03.17.643624).
+# Paper
+**Lee H, Craddock RF, Gorjanc G & Becher H (2025)**  
+randPedPCA: Rapid approximation of principal components from large pedigrees  
+_Genetics Selection Evolution_, 57(1), 46 [here](https://doi.org/10.1186/s12711-025-00994-y)
 
 # R package
 
 ## Setup
 `randPedPCA` is on CRAN!
+
+[![](https://cranlogs.r-pkg.org/badges/randPedPCA)](https://cran.r-project.org/package=randPedPCA)
 ```
 install.package("randPedPCA")
 ```
