@@ -1,0 +1,580 @@
+---
+title: "exercise-1-small-example"
+output: html_document
+---
+
+```{r}
+# This script requires the following R packages:
+#
+# install.packages(pkg = c("pedigreeTools", "Matrix", "randPedPCA", "ggplot2", "dplyr", "rvsd"))
+```
+
+
+```{r}
+rm(list = ls())
+#TODO: Add "correction" for singularity, etc (Solved)
+#TODO: Add correction variation of not explain  version 2 (Later)
+#TODO: rgpca  
+#TODO: Create github issues from picture
+```
+
+# Libraries
+
+```{r setup, include=FALSE}
+library(pedigreeTools)
+library(Matrix)
+library(randPedPCA)
+library(ggplot2)
+library(dplyr)
+library(rsvd)
+library(viridis)
+source("../R/functions.R")
+
+
+```
+
+# Simulation of three populations, of which two (A and B) are separate and
+# the third (AB) is crossbred/admixed with continuous migration (from A and B).
+# Populations A and B are selected on two different traits, while population AB
+# is selected on an index of these two traits (just to build-up differences).
+
+# The simulation can use one common founder population or two founder
+# populations that have diverged some time ago.
+
+# The simulation saves:
+# * pedigree information (=expected Identity By Descent (IBD), eIBD)
+# * IBD haplotypes since the founders (=realised IBD, rIBD)
+# * Identity By State (IBS) genotypes
+# * Trait genetic and phenotypic values
+
+# We would only really need eIBD, but we save more for comparison and pedagogy.
+
+https://rpubs.com/Devashish13/PCAGenomics
+https://privefl.github.io/bigsnpr-extdoc/population-structure.html#ref-prive2020efficient
+
+```{r}
+data <- readRDS("../data/rhpca_large.rds")
+pop.pedigree <- data$pedigree
+pop.marker <- data$genoIBS
+```
+
+
+
+```{r}
+# Sample genotyped individuals
+
+## Top
+sub <- subset(pop.pedigree, generation %in% 0:6 & population %in% c("A", "B", "AB"))
+
+geno.sce0 <- sub$id 
+
+sub.sce1 <- with(sub, split(id, list(generation, population), drop = TRUE))
+
+set.seed(123)
+geno.sce1 <- {
+  base <- sapply(sub.sce1, function(v) sample(v, 10))
+  c(
+    base,
+    sample(
+      setdiff(unlist(sub.sce1, use.names = FALSE), base),            
+      350 - length(base)                                            
+    )
+  )
+}
+geno.sce1 <- as.character(sort(as.numeric(geno.sce1))) 
+
+## Middle
+sub <- subset(pop.pedigree, 
+                    generation %in% 7:13 & population %in% c("A", "B", "AB"))
+
+geno.sce2 <- sub$id
+
+sub.sce3 <- with(sub, split(id, list(generation, population), drop = TRUE))
+set.seed(123) 
+geno.sce3 <- {
+  base <- sapply(sub.sce3, function(v) sample(v, 10))                 
+  c(
+    base,
+    sample(
+      setdiff(unlist(sub.sce3, use.names = FALSE), base),            
+      350 - length(base)                                            
+    )
+  )
+}
+geno.sce3 <- as.character(sort(as.numeric(geno.sce3))) 
+
+
+## Top
+sub <- subset(pop.pedigree, 
+                    generation %in% 14:20 & population %in% c("A", "B", "AB"))
+
+geno.sce4 <- sub$id # All
+
+sub.sce5 <- with(sub, split(id, list(generation, population), drop = TRUE))
+set.seed(123) 
+geno.sce5 <- {
+  base <- sapply(sub.sce5, function(v) sample(v, 10))                 
+  c(
+    base,
+    sample(
+      setdiff(unlist(sub.sce5, use.names = FALSE), base),           
+    )
+  )
+}
+geno.sce5 <- as.character(sort(as.numeric(geno.sce5))) # Random
+
+#saveRDS(geno.sce0, file = "geno.sce0")
+#saveRDS(geno.sce1, file = "geno.sce1")
+#saveRDS(geno.sce2, file = "geno.sce2")
+#saveRDS(geno.sce3, file = "geno.sce3")
+#saveRDS(geno.sce4, file = "geno.sce4")
+#saveRDS(geno.sce5, file = "geno.sce5")
+
+```
+
+
+
+
+```{r}
+
+# Adding genotype animals as column in pop.pedigree
+pop.pedigree["sce0"] <- ifelse(pop.pedigree$id %in% geno.sce0, TRUE, FALSE)
+pop.pedigree["sce1"] <- ifelse(pop.pedigree$id %in% geno.sce1, TRUE, FALSE)
+pop.pedigree["sce2"] <- ifelse(pop.pedigree$id %in% geno.sce2, TRUE, FALSE)
+pop.pedigree["sce3"] <- ifelse(pop.pedigree$id %in% geno.sce3, TRUE, FALSE)
+pop.pedigree["sce4"] <- ifelse(pop.pedigree$id %in% geno.sce4, TRUE, FALSE)
+pop.pedigree["sce5"] <- ifelse(pop.pedigree$id %in% geno.sce5, TRUE, FALSE)
+
+```
+
+
+```{r}
+# Counting number of individuals in the pedigree and gentypes
+
+list(pedigree = nrow(data$pedigree), 
+     haplo = dim(data$haploIBD),
+     geno = dim(data$genoIBS))
+```
+
+
+
+```{r}
+
+# Making the pedigree with pedigreeTools
+
+ped <- pedigree(
+  sire = pop.pedigree$fid,
+  dam  = pop.pedigree$mid,
+  label = pop.pedigree$id
+)
+```
+
+
+## Additive numerator relationship matrix A
+
+```{r}
+A <- getA(ped)
+#L <- t(getL(ped)) 
+#Ainv <- getAInv(ped)
+Li  <- getLInv(ped)
+```
+
+
+## Genomic relationship matrix G
+
+```{r}
+# Molecular markers 
+M.sce0 <- pop.marker[rownames(pop.marker) %in% geno.sce0, ]
+M.sce1 <- pop.marker[rownames(pop.marker) %in% geno.sce1, ]
+M.sce2 <- pop.marker[rownames(pop.marker) %in% geno.sce2, ]
+M.sce3 <- pop.marker[rownames(pop.marker) %in% geno.sce3, ]
+M.sce4 <- pop.marker[rownames(pop.marker) %in% geno.sce4, ]
+M.sce5 <- pop.marker[rownames(pop.marker) %in% geno.sce5, ]
+```
+
+
+
+```{r}
+# Building G matrix, VanRanden method 1
+
+#G <- getG(pop.marker)
+eps <- 0.01
+G      <- getG(pop.marker, eps = eps)
+G.sce0 <- getG(M.sce0, eps = eps)
+G.sce1 <- getG(M.sce1, eps = eps)
+G.sce2 <- getG(M.sce2, eps = eps)
+G.sce3 <- getG(M.sce3, eps = eps)
+G.sce4 <- getG(M.sce4, eps = eps)
+G.sce5 <- getG(M.sce5, eps = eps)
+```
+
+
+## H matrix
+
+```{r}
+
+# Building H matrix directly using driect method Legarra and Aguilar
+
+direct.sce0 <- directh(A, G.sce0, geno.sce0)
+direct.sce1 <- directh(A, G.sce1, geno.sce1)
+direct.sce2 <- directh(A, G.sce2, geno.sce2)
+direct.sce3 <- directh(A, G.sce3, geno.sce3)
+direct.sce4 <- directh(A, G.sce4, geno.sce4)
+direct.sce5 <- directh(A, G.sce5, geno.sce5)
+```
+
+
+## PCA on the A matrix
+
+```{r}
+# Randomised SVD on A matrix, Lee, et al 2025
+
+rppca.A <- rppca(ped)
+```
+
+
+## PCA on the G matrix
+
+```{r}
+
+# Truncated svd on the G matrices
+
+rsvdg <- svd(G)
+rsvdg.sce0 <- svd(G.sce0)
+rsvdg.sce1 <- svd(G.sce1)
+rsvdg.sce2 <- svd(G.sce2)
+rsvdg.sce3 <- svd(G.sce3)
+rsvdg.sce4 <- svd(G.sce4)
+rsvdg.sce5 <- svd(G.sce5)
+
+```
+
+
+## Hybrid relationship matrix direct H PCA
+
+```{r}
+# Truncate svd on the direct H matrix
+
+svd.hsce0 <- svd(direct.sce0)
+svd.hsce1 <- svd(direct.sce1)
+svd.hsce2 <- svd(direct.sce2)
+svd.hsce3 <- svd(direct.sce3)
+svd.hsce4 <- svd(direct.sce4)
+svd.hsce5 <- svd(direct.sce5)
+```
+
+
+## Hybrid relationship matrix indirect H PCA
+
+```{r}
+# Input parameters to run randomised svd
+
+rank       <- 20        
+numVectors <- rank + 10   
+depth      <- 1 
+eps        <- 0.01
+```
+
+
+
+```{r}
+
+# Randomised svd on the H matrix
+rhpca.sce0 <- rhpca(Li, M.sce0, geno = geno.sce0, rank = rank, depth = depth, numVectors = numVectors, eps = eps, cent = FALSE)
+rhpca.sce1 <- rhpca(Li, M.sce1, geno = geno.sce1, rank = rank, depth = depth, numVectors = numVectors, eps = eps, cent = FALSE)
+rhpca.sce2 <- rhpca(Li, M.sce2, geno = geno.sce2, rank = rank, depth = depth, numVectors = numVectors, eps = eps, cent = FALSE)
+rhpca.sce3 <- rhpca(Li, M.sce3, geno = geno.sce3, rank = rank, depth = depth, numVectors = numVectors, eps = eps, cent = FALSE)
+rhpca.sce4 <- rhpca(Li, M.sce4, geno = geno.sce4, rank = rank, depth = depth, numVectors = numVectors, eps = eps, cent = FALSE)
+rhpca.sce5 <- rhpca(Li, M.sce5, geno = geno.sce5, rank = rank, depth = depth, numVectors = numVectors, eps = eps, cent = FALSE)
+```
+
+
+## Plotting PCA
+
+### Scenario 0
+
+```{r}
+# Plotting randomised PCA on A matrix
+plot(rppca.A$x[,1], rppca.A$x[,2], col=c("red","blue", "green")[pop.pedigree$population], pch = 16) 
+
+# Plotting svd PCA on G matrix
+plot(rsvdg$u[,1], rsvdg$u[,2], col=c("red","blue", "green")[pop.pedigree$population], pch = 16)
+
+# Plotting svd PCA on assumed genotyped individuals 
+idx <- match(geno.sce0, pop.pedigree$id)   
+pop.geno <- pop.pedigree$population[idx]   
+cols <- c(A="red", B="blue", AB="green")
+plot(rsvdg.sce0$u[,1], rsvdg.sce0$u[,2], col=cols[as.character(pop.geno)], pch = 16)
+
+
+# Plotting randomised PCA on H matrix
+plot(rhpca.sce0$u[,1], rhpca.sce0$u[,2], col=c("red","blue", "green")[pop.pedigree$population], pch =16)
+#plot(rhpca.sce0$u[,1], rhpca.sce0$u[,3], col=c("red","blue", "green")[pop.pedigree$population], pch =16)
+#plot(rhpca.sce0$u[,1], rhpca.sce0$u[,3], col=c("red","blue", "green")[pop.pedigree$generation], pch =16)
+#plot(rhpca.sce0$u[,2], rhpca.sce0$u[,3], col=c("red","blue", "green")[pop.pedigree$population], pch =16)
+plot(svd.hsce0$u[,1], rhpca.sce0$u[,1])
+plot(svd.hsce0$u[,1], svd.hsce0$u[,2], col=c("red","blue", "green")[pop.pedigree$population], pch =16)
+
+```
+
+### Scenario 1
+
+```{r}
+# Plotting randomised PCA on A matrix
+plot(rppca.A$x[,1], rppca.A$x[,2], col=c("red","blue", "green")[pop.pedigree$population], pch = 16) 
+
+# Plotting svd PCA on G matrix
+plot(rsvdg$u[,1], rsvdg$u[,2], col=c("red","blue", "green")[pop.pedigree$population], pch = 16)
+
+# Plotting svd PCA on assumed genotyped individuals 
+idx <- match(geno.sce1, pop.pedigree$id)   
+pop.geno <- pop.pedigree$population[idx]   
+cols <- c(A="red", B="blue", AB="green")
+plot(rsvdg.sce1$u[,1], rsvdg.sce1$u[,2], col=cols[as.character(pop.geno)], pch = 16)
+
+# Plotting randomised PCA on H matrix
+plot(rhpca.sce1$u[,1], rhpca.sce1$u[,2], col=c("red","blue", "green")[pop.pedigree$population], pch =16)
+#plot(rhpca.sce0$u[,1], rhpca.sce0$u[,3], col=c("red","blue", "green")[pop.pedigree$population], pch =16)
+#plot(rhpca.sce0$u[,1], rhpca.sce0$u[,3], col=c("red","blue", "green")[pop.pedigree$generation], pch =16)
+#plot(rhpca.sce0$u[,2], rhpca.sce0$u[,3], col=c("red","blue", "green")[pop.pedigree$population], pch =16)
+plot(svd.hsce1$u[,1], rhpca.sce1$u[,1])
+plot(svd.hsce1$u[,1], svd.hsce1$u[,2], col=c("red","blue", "green")[pop.pedigree$population], pch =16)
+```
+
+
+
+### Scenario 2
+
+```{r}
+
+# Plotting randomised PCA on A matrix
+plot(rppca.A$x[,1], rppca.A$x[,2], col=c("red","blue", "green")[pop.pedigree$population], pch = 16) 
+
+# Plotting svd PCA on G matrix
+plot(rsvdg$u[,1], rsvdg$u[,2], col=c("red","blue", "green")[pop.pedigree$population], pch = 16)
+
+# Plotting svd PCA on assumed genotyped individuals
+idx <- match(geno.sce2, pop.pedigree$id)   
+pop.geno <- pop.pedigree$population[idx]   
+cols <- c(A="red", B="blue", AB="green")
+plot(rsvdg.sce2$u[,1], rsvdg.sce2$u[,2], col=cols[as.character(pop.geno)], pch = 16)
+
+
+# Plotting randomised PCA on H matrix
+plot(rhpca.sce2$u[,1], rhpca.sce2$u[,2], col=c("red","blue", "green")[pop.pedigree$population], pch =16)
+#plot(rhpca.sce0$u[,1], rhpca.sce0$u[,3], col=c("red","blue", "green")[pop.pedigree$population], pch =16)
+#plot(rhpca.sce0$u[,1], rhpca.sce0$u[,3], col=c("red","blue", "green")[pop.pedigree$generation], pch =16)
+#plot(rhpca.sce0$u[,2], rhpca.sce0$u[,3], col=c("red","blue", "green")[pop.pedigree$population], pch =16)
+plot(svd.hsce2$u[,1], rhpca.sce2$u[,1])
+plot(svd.hsce2$u[,1], svd.hsce2$u[,2], col=c("red","blue", "green")[pop.pedigree$population], pch =16)
+
+```
+
+
+
+### Scenario 3
+
+```{r}
+
+# Plotting randomised PCA on A matrix
+plot(rppca.A$x[,1], rppca.A$x[,2], col=c("red","blue", "green")[pop.pedigree$population], pch = 16) 
+
+# Plotting svd PCA on G matrix
+plot(rsvdg$u[,1], rsvdg$u[,2], col=c("red","blue", "green")[pop.pedigree$population], pch = 16)
+
+# Plotting svd PCA on assumed genotyped individuals
+idx <- match(geno.sce3, pop.pedigree$id)   
+pop.geno <- pop.pedigree$population[idx]   
+cols <- c(A="red", B="blue", AB="green")
+plot(rsvdg.sce3$u[,1], rsvdg.sce3$u[,2], col=cols[as.character(pop.geno)], pch = 16)
+
+
+# Plotting randomised PCA on H matrix
+plot(rhpca.sce3$u[,1], rhpca.sce3$u[,2], col=c("red","blue", "green")[pop.pedigree$population], pch =16)
+#plot(rhpca.sce0$u[,1], rhpca.sce0$u[,3], col=c("red","blue", "green")[pop.pedigree$population], pch =16)
+#plot(rhpca.sce0$u[,1], rhpca.sce0$u[,3], col=c("red","blue", "green")[pop.pedigree$generation], pch =16)
+#plot(rhpca.sce0$u[,2], rhpca.sce0$u[,3], col=c("red","blue", "green")[pop.pedigree$population], pch =16)
+plot(svd.hsce3$u[,1], rhpca.sce3$u[,1])
+plot(svd.hsce3$u[,1], svd.hsce3$u[,2], col=c("red","blue", "green")[pop.pedigree$population], pch =16)
+
+```
+
+
+### Scenario 4
+
+```{r}
+
+# Plotting randomised PCA on A matrix
+plot(rppca.A$x[,1], rppca.A$x[,2], col=c("red","blue", "green")[pop.pedigree$population], pch = 16) 
+
+# Plotting svd PCA on G matrix
+plot(rsvdg$u[,1], rsvdg$u[,2], col=c("red","blue", "green")[pop.pedigree$population], pch = 16)
+
+# Plotting svd PCA on assumed genotyped individuals
+idx <- match(geno.sce4, pop.pedigree$id)   
+pop.geno <- pop.pedigree$population[idx]   
+cols <- c(A="red", B="blue", AB="green")
+plot(rsvdg.sce4$u[,1], rsvdg.sce4$u[,2], col=cols[as.character(pop.geno)], pch = 16)
+
+
+# Plotting randomised PCA on H matrix
+plot(rhpca.sce4$u[,1], rhpca.sce4$u[,2], col=c("red","blue", "green")[pop.pedigree$population], pch =16)
+#plot(rhpca.sce0$u[,1], rhpca.sce0$u[,3], col=c("red","blue", "green")[pop.pedigree$population], pch =16)
+#plot(rhpca.sce0$u[,1], rhpca.sce0$u[,3], col=c("red","blue", "green")[pop.pedigree$generation], pch =16)
+#plot(rhpca.sce0$u[,2], rhpca.sce0$u[,3], col=c("red","blue", "green")[pop.pedigree$population], pch =16)
+plot(svd.hsce4$u[,1], rhpca.sce4$u[,1])
+plot(svd.hsce4$u[,1], svd.hsce4$u[,2], col=c("red","blue", "green")[pop.pedigree$population], pch =16)
+
+```
+
+
+
+### Scenario 5
+
+```{r}
+
+# Plotting randomised PCA on A matrix
+plot(rppca.A$x[,1], rppca.A$x[,2], col=c("red","blue", "green")[pop.pedigree$population], pch = 16) 
+
+# Plotting svd PCA on G matrix
+plot(rsvdg$u[,1], rsvdg$u[,2], col=c("red","blue", "green")[pop.pedigree$population], pch = 16)
+
+# Plotting svd PCA on assumed genotyped individuals
+idx <- match(geno.sce5, pop.pedigree$id)   
+pop.geno <- pop.pedigree$population[idx]   
+cols <- c(A="red", B="blue", AB="green")
+plot(rsvdg.sce5$u[,1], rsvdg.sce5$u[,2], col=cols[as.character(pop.geno)], pch = 16)
+
+
+# Plotting randomised PCA on H matrix
+plot(rhpca.sce5$u[,1], rhpca.sce5$u[,2], col=c("red","blue", "green")[pop.pedigree$population], pch =16)
+#plot(rhpca.sce0$u[,1], rhpca.sce0$u[,3], col=c("red","blue", "green")[pop.pedigree$population], pch =16)
+#plot(rhpca.sce0$u[,1], rhpca.sce0$u[,3], col=c("red","blue", "green")[pop.pedigree$generation], pch =16)
+#plot(rhpca.sce0$u[,2], rhpca.sce0$u[,3], col=c("red","blue", "green")[pop.pedigree$population], pch =16)
+plot(svd.hsce5$u[,1], rhpca.sce5$u[,1])
+plot(svd.hsce5$u[,1], svd.hsce5$u[,2], col=c("red","blue", "green")[pop.pedigree$population], pch =16)
+
+```
+
+
+
+
+
+```{r}
+
+# Geno 0
+is.geno <- pop.pedigree$id %in% geno.sce0 
+col.gen <- ifelse(is.geno, "blue", "orange")
+pch.gen <- ifelse(is.geno, 16, 1)
+cex.gen <- ifelse(is.geno, 1.0, 0.5)
+
+plot(rhpca.sce0$u[,1], rhpca.sce0$u[,2], col = col.gen, pch = pch.gen, cex = cex.gen)
+legend("topright", 
+       legend = c("Genotyped","Not genotyped"),
+       col = c("blue","orange"),
+       pch = c(16,1))
+
+# Geno 1
+is.geno <- pop.pedigree$id %in% geno.sce1 
+col.gen <- ifelse(is.geno, "blue", "orange")
+pch.gen <- ifelse(is.geno, 16, 1)
+cex.gen <- ifelse(is.geno, 1.0, 0.5)
+
+plot(rhpca.sce1$u[,1], rhpca.sce1$u[,2], col = col.gen, pch = pch.gen, cex = cex.gen)
+legend("topright", 
+       legend = c("Genotyped","Not genotyped"),
+       col = c("blue","orange"),
+       pch = c(16,1))
+
+# Geno 2
+is.geno <- pop.pedigree$id %in% geno.sce2 
+col.gen <- ifelse(is.geno, "blue", "orange")
+pch.gen <- ifelse(is.geno, 16, 1)
+cex.gen <- ifelse(is.geno, 1.0, 0.5)
+
+plot(rhpca.sce2$u[,1], rhpca.sce2$u[,2], col = col.gen, pch = pch.gen, cex = cex.gen)
+legend("topright", 
+       legend = c("Genotyped","Not genotyped"),
+       col = c("blue","orange"),
+       pch = c(16,1))
+
+
+# Geno 3
+is.geno <- pop.pedigree$id %in% geno.sce3 
+col.gen <- ifelse(is.geno, "blue", "orange")
+pch.gen <- ifelse(is.geno, 16, 1)
+cex.gen <- ifelse(is.geno, 1.0, 0.5)
+
+plot(rhpca.sce3$u[,1], rhpca.sce3$u[,2], col = col.gen, pch = pch.gen, cex = cex.gen)
+legend("topright", 
+       legend = c("Genotyped","Not genotyped"),
+       col = c("blue","orange"),
+       pch = c(16,1))
+
+# Geno 4
+is.geno <- pop.pedigree$id %in% geno.sce4 
+col.gen <- ifelse(is.geno, "blue", "orange")
+pch.gen <- ifelse(is.geno, 16, 1)
+cex.gen <- ifelse(is.geno, 1.0, 0.5)
+
+plot(rhpca.sce4$u[,1], rhpca.sce4$u[,2], col = col.gen, pch = pch.gen, cex = cex.gen)
+legend("topright", 
+       legend = c("Genotyped","Not genotyped"),
+       col = c("blue","orange"),
+       pch = c(16,1))
+
+# Geno 5
+is.geno <- pop.pedigree$id %in% geno.sce5 
+col.gen <- ifelse(is.geno, "blue", "orange")
+pch.gen <- ifelse(is.geno, 16, 1)
+cex.gen <- ifelse(is.geno, 1.0, 0.5)
+
+plot(rhpca.sce5$u[,1], rhpca.sce5$u[,2], col = col.gen, pch = pch.gen, cex = cex.gen)
+legend("topright", 
+       legend = c("Genotyped","Not genotyped"),
+       col = c("blue","orange"),
+       pch = c(16,1))
+
+```
+
+
+```{r}
+gen <- pop.pedigree$generation  
+col.gen <- viridis(max(gen) + 1)[gen + 1]   
+
+plot(rhpca.sce0$u[,1], rhpca.sce0$u[,2], col = col.gen, pch = 16, cex = 0.7)
+legend("topright", title = "Generation", legend = seq(min(gen), max(gen)), col = viridis(max(gen) + 1),
+       pch = 16, ncol = 2, cex = 0.6)
+
+plot(rhpca.sce1$u[,1], rhpca.sce1$u[,2], col = col.gen, pch = 16, cex = 0.7)
+legend("topright", title = "Generation", legend = seq(min(gen), max(gen)), col = viridis(max(gen) + 1),
+       pch = 16, ncol = 2, cex = 0.6)
+
+plot(rhpca.sce2$u[,1], rhpca.sce2$u[,2], col = col.gen, pch = 16, cex = 0.7)
+legend("topright", title = "Generation", legend = seq(min(gen), max(gen)), col = viridis(max(gen) + 1),
+       pch = 16, ncol = 2, cex = 0.6)
+
+plot(rhpca.sce3$u[,1], rhpca.sce3$u[,2], col = col.gen, pch = 16, cex = 0.7)
+legend("topright", title = "Generation", legend = seq(min(gen), max(gen)), col = viridis(max(gen) + 1),
+       pch = 16, ncol = 2, cex = 0.6)
+
+plot(rhpca.sce4$u[,1], rhpca.sce4$u[,2], col = col.gen, pch = 16, cex = 0.7)
+legend("topright", title = "Generation", legend = seq(min(gen), max(gen)), col = viridis(max(gen) + 1),
+       pch = 16, ncol = 2, cex = 0.6)
+
+plot(rhpca.sce5$u[,1], rhpca.sce5$u[,2], col = col.gen, pch = 16, cex = 0.7)
+legend("topright", title = "Generation", legend = seq(min(gen), max(gen)), col = viridis(max(gen) + 1),
+       pch = 16, ncol = 2, cex = 0.6)
+
+
+```
+
+
+
+
+
+
+
+
+
+

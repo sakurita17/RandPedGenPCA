@@ -1,0 +1,540 @@
+---
+title: "exercise-1-small-example"
+output: html_document
+---
+
+```{r}
+# This script requires the following R packages:
+#
+# install.packages(pkg = c("pedigreeTools", "Matrix", "randPedPCA", "ggplot2", "dplyr", "rvsd"))
+```
+
+
+```{r}
+rm(list = ls())
+
+#TODO: Add correction variation of not explain  version1 Ok
+#TODO: Add correction variation of not explain  version 2 (Later)
+#TODO: rgpca  
+#TODO: Create github issues from picture
+```
+
+# Libraries
+
+```{r setup, include=FALSE}
+library(pedigreeTools)
+library(Matrix)
+library(randPedPCA)
+library(ggplot2)
+library(dplyr)
+library(rsvd)
+source("functions.R")
+```
+
+# Data description and preparation
+
+Pedigree and genomic data from Mrode2023 (Chapter 11) - Linear models for the prediction of the genetic merit of animals 
+
+## Pedigree
+https://cran.r-project.org/web/packages/AGHmatrix/vignettes/Tutorial_AGHmatrix.html
+
+```{r}
+# Pedigree
+label <- 1:17
+sire <- c(NA, NA, NA, NA, NA, NA, NA, NA, 1, 3, 5, 7, 9, 11, 11, 13, 13)
+dam <-  c(NA, NA, NA, NA, NA, NA, NA, NA, 2, 4, 6, 8, 10, 4, 12, 15, 14)
+geno <- c("9", "10", "11", "12")
+non_geno <- as.character(label[!(label %in% geno)])
+```
+
+
+
+```{r}
+ped <- pedigree(
+  sire  = sire,
+  dam   = dam,
+  label = label
+)
+```
+
+## Additive numerator relationship matrix A
+
+```{r}
+A <- getA(ped)
+L <- t(getL(ped)) 
+
+Ainv <- getAInv(ped)
+rownames(Ainv) <- label
+colnames(Ainv) <- label
+
+Li  <- getLInv(ped)
+rownames(Li) <- label
+colnames(Li) <- label
+```
+
+
+## Genomic relationship matrix G
+
+
+```{r}
+# G matrix from Legarra
+G <- matrix(data = NA, nrow = 4, ncol = 4, byrow = FALSE, dimnames = NULL)
+diag(G) <- 1.00
+G[row(G) != col(G)] <- 0.70
+
+G_middle <- G
+colnames(G_middle) <- c("9", "10", "11", "12")
+rownames(G_middle) <- c("9", "10", "11", "12")
+
+G_top <- G
+colnames(G_top) <- c("14", "15", "16", "17")
+rownames(G_top) <- c("14", "15", "16", "17")
+
+G_bottom <- G
+colnames(G_bottom) <- c("3", "5", "10", "12")
+rownames(G_bottom) <- c("3", "5", "10", "12")
+
+G_random
+colnames(G_random) <- c("1", "12", "13", "16")
+rownames(G_random) <- c("1", "12", "13", "16")
+
+```
+
+
+
+```{r}
+
+# Molecular maekers 
+markers_df <- read.table(text = "
+animal sire dam mean EDC fat_DYD SNP1 SNP2 SNP3 SNP4 SNP5 SNP6 SNP7 SNP8 SNP9 SNP10
+9    0   0    1 558     9.0    2    0    1    1    0    0    0    2    1     2
+10    0   0    1 722    13.4    1    0    0    0    0    2    0    2    1     0
+11   13   4    1 300    12.7    1    1    2    1    1    0    0    2    1     2
+12   15   2    1  73    15.4    0    0    2    1    0    1    0    2    2     1
+", header = TRUE)
+```
+
+
+```{r}
+M <- markers_df[, 7:16]
+rownames(M) <- geno
+```
+
+
+Using vanraden (2008) method 
+
+$G=ZZ^T$. if I do Cholesky of G, I will have upper and lower triangular matrices, $Z$ and $Z^T$ respectively, what happen with the scalar factor???  
+
+
+
+```{r}
+getG <- function(M) {
+  
+  # Alles frequencies
+  p = apply(M, 2, mean)/2
+  q = 1 - p
+  
+  # Creating P matrix
+  #P = matrix(rep(p*2, nrow(M)), ncol = ncol(M), nrow = nrow(M), byrow = TRUE)
+  
+  # Z = M - P
+  #Z <- as.matrix(M - P)
+  Z <- sweep(x = as.matrix(M), MARGIN = 2, STATS = 2*p, FUN = "-")
+  
+  # scaled factor k = 2*sum*(p*q)
+  k <- 2*sum(p*q)
+  
+  # G matrix
+  G <- (Z%*%t(Z))/k 
+  return(G)
+} 
+```
+
+
+```{r}
+G1 <- getG(M)
+diag(G1) <- diag(G1) + 0.01 # for numeric stability and avoid singularity
+```
+
+
+# Direct method, explicit "x" multiplication Hx
+Cholesky decomposition of $H = SS^T$
+
+```{r}
+# H matrix
+A11 <- A[non_geno, non_geno]
+A22 <- A[geno, geno]
+A12 <- A[non_geno, geno]
+A21 <- t(A12)
+
+## H components (4 quadrants), using linear solves instead of explicit inverses
+# Precompute useful solves
+B <- solve(A22, A21)          # = A_22^{-1} A_21
+D <- solve(A22, G1 - A22)      # = A_22^{-1} (G - A_22)
+
+H11 <- A11 + A12 %*% D %*% B
+H12 <- A12 %*% solve(A22, G1)
+H21 <- t(H12)
+H22 <- G1
+
+## Bind blocks (cBind/rBind are defunct; use base cbind/rbind)
+Htop    <- cbind(H11, H12)
+Hbottom <- cbind(H21, H22)
+H        <- rbind(Htop, Hbottom)
+
+# reorder H
+H <- H[order(as.numeric(rownames(H))), order(as.numeric(colnames(H)))]
+
+# convert to Matrix
+H <- Matrix(H)
+rownames(H) <- as.character(label)
+colnames(H) <- as.character(label)
+
+#S <- t(chol(H)) # I can not run cholesky of H because itis not positive defined, I got error, make sense to do svd(Z), it was solved because we corrected by allele frecuencies.. etc 
+
+```
+
+
+# Indirect magic method, implicit "omega" multiplication H*omega
+
+## Data
+
+```{r}
+set.seed(42)
+n <- nrow(Li)
+numVectors <- 1
+testVectors <- rnorm(n = n * numVectors)
+testMatrix <- matrix(testVectors, nrow = nrow(Li), ncol = numVectors, dimnames = list(rownames(Li)))
+```
+
+## Direct computation
+
+```{r}
+Ax_direct <- A %*% testMatrix
+Hx_direct <- H %*% testMatrix
+```
+
+
+## Step 1: Z = AX
+
+```{r}
+Z  <- oraculumLi(Li, testMatrix)
+Z1 <- Z[non_geno, seq_len(numVectors), drop = FALSE]
+Z2 <- Z[geno, seq_len(numVectors), drop = FALSE]
+```
+
+## Step 2: G((A_22)^-1z_2)
+
+Note: Upper x lower = inverse
+
+### 2.1) $R = A^{12}Z_2$
+
+```{r}
+# ----- R_direct
+Ainv12 <- Ainv[non_geno, geno, drop=FALSE]
+R_direct <- Ainv12 %*% Z2
+
+# ----- R_indirect
+subMatrix <- matrix(0, nrow = nrow(Li), ncol = ncol(testMatrix), 
+                    dimnames = list(rownames(Li), colnames(testMatrix)))
+subMatrix[geno, ] <- as.matrix(Z2)
+tmp <- Li %*% subMatrix
+R_indirect <- crossprod(Li, tmp)
+R_indirect <- R_indirect[non_geno, , drop = FALSE]
+plot(R_direct, R_indirect)
+```
+
+
+### 2.2) $M = A^{22}Z_2$
+
+```{r}
+# ----- M_direct
+Ainv22 <- Ainv[geno, geno, drop=FALSE]
+M_direct <- Ainv22 %*% Z2
+
+# ----- M_indirect
+subMatrix <- matrix(0, nrow = nrow(Li), ncol = ncol(testMatrix), 
+                    dimnames = list(rownames(Li), colnames(testMatrix)))
+subMatrix[geno, ] <- as.matrix(Z2)
+tmp <- Li %*% subMatrix
+M_indirect <- crossprod(Li, tmp)
+M_indirect <- M_indirect[geno, , drop = FALSE]
+
+plot(M_direct, M_indirect)
+```
+
+
+### 2.3) $Q = (A^{11})^{-1}, R)$
+
+Ainv = t(Li) %*% Li
+
+```{r}
+# ----- Q_direct
+Ainv11   <- Ainv[non_geno, non_geno, drop=FALSE]  # A^{11}
+Q_direct <- solve(Ainv11, R_indirect) # CM method from Stranden et al. (2016)
+
+# solve(Ainv11) %*% r_indirect - q_direct # test
+Li11 <- Li[, non_geno]  
+Ainv11 <- crossprod(Li11)
+Q_indirect <- solve(Ainv11, R_indirect) # CM method from Stranden et al. (2016)
+  
+# ----- Q_indirect
+# See methods IOP and IM in Stranden et al. (2016) https://pubmed.ncbi.nlm.nih.gov/28508482/
+Q_indirect <- Q_direct
+```
+
+
+### 2.4) $P = -A^{21}Q$
+
+```{r}
+# ----- P_direct
+Ainv21 <- Ainv[geno, non_geno]
+P_direct <- -(Ainv21 %*% Q_direct)
+
+# ----- P_indirect
+subMatrix <- matrix(0, nrow = nrow(Li), ncol = ncol(testMatrix), 
+                    dimnames = list(rownames(Li), colnames(testMatrix)))
+subMatrix[non_geno, ] <- as.matrix(Q_indirect)
+tmp <- Li %*% subMatrix
+P_indirect <- crossprod(Li, tmp)
+P_indirect <- -(P_indirect[geno, ,drop = FALSE ]) 
+
+
+plot(P_direct, P_indirect)
+```
+
+### 2.5) $f(Z_2) = P + M$
+
+```{r}
+f_Z2 <- P_indirect + M_indirect
+```
+
+
+### 2.6) $Y_{2} = ZZ^{T}f(Z_2)/k$
+
+```{r}
+eps <- 0.01
+p <- apply(M, 2, mean)/2
+q <- 1 - p
+Z <- sweep(x = as.matrix(M), MARGIN = 2, STATS = 2*p, FUN = "-")
+k <- 2*sum(p*q)
+G1 <- (Z%*%t(Z))/k 
+diag(G1) <- diag(G1) + eps
+
+# ----- Y2_direct
+Y2_direct <- G1 %*% f_Z2
+
+# ----- Y2_indirect
+C  <- crossprod(Z, f_Z2)
+Y2 <- Z %*% C
+Y2_indirect <- (Y2/k) + f_Z2 * eps
+
+plot(Y2_direct, Y2_indirect)
+```
+
+## Step 3
+
+```{r}
+D2 <- Y2_indirect - Z2
+```
+
+
+## Step 4
+
+### 4.1) $R = A^{12}D_2$
+
+```{r}
+# ----- R_direct
+Ainv12 <- Ainv[non_geno, geno]
+R_direct <- Ainv12 %*% D2
+
+# ----- R_indirect
+subMatrix <- matrix(0, nrow = nrow(Li), ncol = ncol(testMatrix), 
+                    dimnames = list(rownames(Li), colnames(testMatrix)))
+subMatrix[geno, ] <- as.matrix(D2)
+tmp <- Li %*% subMatrix 
+R_indirect <- crossprod(Li, tmp)
+R_indirect <- R_indirect[non_geno, , drop = FALSE]
+
+plot(R_direct, R_indirect)
+```
+
+### 4.2) $M = A^{22}D_2$
+
+```{r}
+# ----- M_direct
+Ainv22 <- Ainv[geno, geno]
+M_direct <- Ainv22 %*% D2
+
+# ----- M_indirect
+subMatrix <- matrix(0, nrow = nrow(Li), ncol = ncol(testMatrix), 
+                    dimnames = list(rownames(Li), colnames(testMatrix)))
+subMatrix[geno, ] <- as.matrix(D2)
+tmp <- Li %*% subMatrix
+M_indirect <- crossprod(Li, tmp)
+M_indirect <- M_indirect[geno, ,drop = FALSE]
+
+plot(M_direct, M_indirect) 
+```
+
+### 4.3) $Q = (A^{11})^{-1}, R)$
+
+```{r}
+# ----- Q_direct
+Ainv11   <- Ainv[non_geno, non_geno, drop=FALSE]  # A^{11}
+Q_direct <- solve(Ainv11, R_indirect) # CM method from Stranden et al. (2016)
+
+# solve(Ainv11) %*% r_indirect - q_direct # test
+Li11 <- Li[, non_geno]  
+Ainv11 <- crossprod(Li11)
+Q_indirect <- solve(Ainv11, R_indirect) # CM method from Stranden et al. (2016)
+
+# solve(Ainv11) %*% r_indirect - q_direct # test
+
+# ----- Q_indirect
+# See methods IOP and IM in Stranden et al. (2016) https://pubmed.ncbi.nlm.nih.gov/28508482/
+Q_indirect <- Q_direct
+
+```
+
+
+### 4.4) $P = -A^{21}Q$
+
+```{r}
+# ----- P_direct
+Ainv21 <- Ainv[geno, non_geno]
+P_direct <- -(Ainv21 %*% Q_direct)
+
+# ----- P_indirect
+subMatrix <- matrix(0, nrow = nrow(Li), ncol = ncol(testMatrix), 
+                    dimnames = list(rownames(Li), colnames(testMatrix)))
+subMatrix[non_geno, ] <- as.matrix(Q_indirect)
+tmp <- Li %*% subMatrix
+P_indirect <- crossprod(Li, tmp)
+P_indirect <- -(P_indirect[geno, ,drop=FALSE])
+
+plot(P_direct, P_indirect) 
+```
+
+
+### 4.5) $f(D_2) = P + M$
+
+```{r}
+f_D2 <- P_indirect + M_indirect
+```
+
+
+### 4.6) $D_{1} = A_{12}f(D_1)$
+
+```{r}
+# ----- D1_direct
+A12 <- A[non_geno, geno, drop = FALSE]
+D1_direct <- A12 %*% f_D2
+
+# ----- D1_indirect
+subMatrix <- matrix(0, nrow = nrow(Li), ncol = ncol(testMatrix), 
+                    dimnames = list(rownames(Li), colnames(testMatrix)))
+subMatrix[geno, ] <- as.matrix(f_D2)
+D1_indirect  <- oraculumLi(Li, subMatrix)
+D1_indirect <- D1_indirect[non_geno, ,drop = FALSE]
+ 
+plot(D1_direct, D1_indirect)
+```
+
+## Step 5
+
+```{r}
+Y1_indirect <- Z1 + D1_indirect
+```
+
+## Step 6 
+
+```{r}
+Hx_indirect_magic <- matrix(
+  0,
+  nrow = nrow(Li),
+  ncol = ncol(testMatrix),
+  dimnames = list(rownames(Li), colnames(testMatrix))
+)
+Hx_indirect_magic[non_geno, ] <- as.matrix(Y1_indirect)
+Hx_indirect_magic[geno, ]     <- as.matrix(Y2_direct)
+Hx_indirect_magic <- Matrix(Hx_indirect_magic, sparse = FALSE)
+```
+
+
+## Test functio
+
+```{r}
+rhpca_H <- rhpca(Li, M, geno = geno, rank = 3, depth = 3, numVectors = 3, eps = 0.01, cent = FALSE)
+```
+
+```{r}
+plot(rhpca_H$u[,1], rhpca_H$u[,2])
+```
+
+
+```{r}
+rppca_a <- rppca(ped)
+```
+
+```{r}
+plot(rppca_a$x[,1], rppca_a$x[,2])
+```
+
+```{r}
+M_svd <- svd(M)
+```
+
+```{r}
+plot(M_svd$u[, 1], M_svd$u[, 2])
+```
+
+
+
+```{r}
+svd_H <- svd(H)
+
+```
+
+
+```{r}
+plot(rhpca_H$u[,1], svd_H$u[,1])
+```
+
+```{r}
+plot(rhpca_H$u[,1], rhpca_H$u[,2])
+```
+
+```{r}
+plot(svd_H$u[,1], svd_H$u[,2])
+```
+
+
+
+# Function
+
+```{r}
+Hx_magic <- oraculumH(Li, M, non_geno = non_geno, geno = geno, testMatrix, eps = 0.01)
+```
+
+
+```{r}
+Hx_magic_pca <- rhpca(Li, M, non_geno, geno, rank = 3, depth = 3, numVectors = 3, eps = 0.01)
+```
+
+```{r}
+par(mfrow = c(1,1))
+par(oma = rep(0,4))
+par(mar = c(3,3,2,1))
+plot(H_pca$vectors, Hx_magic_pca$u)
+```
+
+```{r}
+pca_indirect <- rhpca(Li, M, non_geno, geno, rank = 1, depth = 1, numVectors = 1, eps = 0.01, cent = FALSE)
+```
+
+```{r}
+oraculumH(Li, M, non_geno = non_geno, geno = geno, testMatrix, eps = 0.01)
+```
+
+

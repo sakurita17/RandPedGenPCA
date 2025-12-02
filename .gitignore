@@ -221,3 +221,6 @@ randPedPCA.Rcheck/*
 
 # temp files from tests
 randPedPCA/tests/testthat/*.pdf
+
+# RStudio file randPedGenPCA
+randPedGenPCA/data/rhpca_large.rds
